@@ -2,10 +2,10 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch, mm
 
-def generate_pdf(front_image_files, back_image_file, output_pdf):
+def generate_pdf(front_image_files, back_image_files, output_pdf):
     """
-    Generates a PDF with perfect front-to-back alignment and identical margins.
-    Cards are scaled up by 2% while maintaining margin symmetry.
+    Generates a PDF with perfect front-to-back alignment.
+    Back sides are in reversed order per row for proper double-sided printing.
     """
     c = canvas.Canvas(output_pdf, pagesize=A4)
     page_width, page_height = A4  # 595.44 x 841.68 points
@@ -30,28 +30,22 @@ def generate_pdf(front_image_files, back_image_file, output_pdf):
     vertical_space = page_height - (2 * margin) - total_cards_height
     gap = max(1, vertical_space / (rows - 1))  # Ensure at least 1 point gap
 
-    def draw_page(image_list, is_back=False):
-        for index, img_file in enumerate(image_list):
-            if index >= cards_per_page:
-                break
-
-            row = index // cols
-            col = index % cols
-
-            # Calculate position (identical margins on all sides)
-            x = margin + col * card_width
-            y = margin + (rows - 1 - row) * (card_height + gap)
-
+    def draw_page(front_images, back_images, is_back=False):
+        images = back_images if is_back else front_images
+        for row in range(rows):
+            row_start = row * cols
+            row_end = min(row_start + cols, len(images))
+            row_images = images[row_start:row_end]
+            
             if is_back:
-                # For backs: rotate 180° around the card's center point
-                c.saveState()
-                c.translate(x + card_width/2, y + card_height/2)
-                c.rotate(180)
-                c.drawImage(img_file, -card_width/2, -card_height/2, 
-                          width=card_width, height=card_height, 
-                          preserveAspectRatio=True)
-                c.restoreState()
-            else:
+                # Reverse the order of images in each row for back side
+                row_images = row_images[::-1]
+
+            for col, img_file in enumerate(row_images):
+                # Calculate position (identical margins on all sides)
+                x = margin + col * card_width
+                y = margin + (rows - 1 - row) * (card_height + gap)
+
                 c.drawImage(img_file, x, y, width=card_width, height=card_height,
                           preserveAspectRatio=True)
 
@@ -75,19 +69,18 @@ def generate_pdf(front_image_files, back_image_file, output_pdf):
 
         c.showPage()
 
-    # Generate pages
+    # Generate pages with corresponding backs
     total_cards = len(front_image_files)
     for i in range(0, total_cards, cards_per_page):
-        group = front_image_files[i:i+cards_per_page]
-        # Draw front page
-        draw_page(group, is_back=False)
-        # Draw back page
-        draw_page([back_image_file] * len(group), is_back=True)
+        group_fronts = front_image_files[i:i+cards_per_page]
+        group_backs = back_image_files[i:i+cards_per_page]
+        draw_page(group_fronts, group_backs, is_back=False)
+        draw_page(group_fronts, group_backs, is_back=True)
 
     c.save()
 
 if __name__ == "__main__":
     # Test PDF generation
     fronts = ["test_front.jpg"] * 9  # Test with 9 cards
-    back = "assets/card_back.jpg"
-    generate_pdf(fronts, back, "test_output.pdf")
+    backs = ["test_back.jpg"] * 9  # Test with 9 backs
+    generate_pdf(fronts, backs, "test_output.pdf")

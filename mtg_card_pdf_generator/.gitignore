@@ -1,3 +1,4 @@
 # Ignore card images folder
 card_images/
-mtg_card_pdf_generator/_pycache_/
+mtg_card_pdf_generator/__pycache__/
+mtgjson_cache/
