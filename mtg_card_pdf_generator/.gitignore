@@ -1,0 +1,3 @@
+# Ignore card images folder
+card_images/
+mtg_card_pdf_generator/_pycache_/
