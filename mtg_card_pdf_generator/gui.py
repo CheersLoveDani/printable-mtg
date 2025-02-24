@@ -6,6 +6,7 @@ from PIL import Image, ImageTk  # <--- Install Pillow for image display
 import threading
 import queue
 from functools import partial
+import re
 
 from deck_parser import parse_decklist
 from scryfall import get_card_image_url, download_image
@@ -263,6 +264,15 @@ class MTGPDFGeneratorGUI(tk.Tk):
                 print(f"Error loading images for {card_name}: {e}")
                 continue
 
+    def sanitize_filename(self, name):
+        """Sanitize card name for file system use."""
+        # Remove special characters and invalid filename chars
+        name = name.split(" // ")[0]  # Take only the front card name
+        # Remove any special characters and replace with underscore
+        name = re.sub(r'[\\/*?:"<>|]', '', name)
+        name = re.sub(r'[^a-zA-Z0-9\-_\s]', '', name)
+        return name.replace(" ", "_").strip("_")
+
     def generate_pdf_workflow(self):
         """Worker thread for PDF generation."""
         try:
@@ -275,18 +285,12 @@ class MTGPDFGeneratorGUI(tk.Tk):
             card_images = []  # List of (front_path, back_path) tuples
             total_cards = len(deck)
 
-            def sanitize_filename(name):
-                """Sanitize card name for file system use."""
-                # Replace slashes and other problematic characters
-                name = name.split(" // ")[0]  # Take only the front card name
-                return name.replace(" ", "_").replace("/", "_").replace("\\", "_")
-
             for index, card_tuple in enumerate(deck):
                 card_name, variant_info = card_tuple
                 self.queue_action("status", f"Downloading image for '{card_name}' ({index+1}/{total_cards})...")
                 self.queue_action("progress", (index / total_cards) * 50)
 
-                safe_name = sanitize_filename(card_name)
+                safe_name = self.sanitize_filename(card_name)
                 front_path = os.path.join(self.image_folder, f"{safe_name}_front.jpg")
                 back_path = os.path.join(self.image_folder, f"{safe_name}_back.jpg")
 
