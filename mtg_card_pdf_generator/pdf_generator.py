@@ -5,13 +5,15 @@ from reportlab.lib.units import inch, mm
 def generate_pdf(front_image_files, back_image_file, output_pdf):
     """
     Generates a PDF with perfect front-to-back alignment and identical margins.
+    Cards are scaled up by 2% while maintaining margin symmetry.
     """
     c = canvas.Canvas(output_pdf, pagesize=A4)
     page_width, page_height = A4  # 595.44 x 841.68 points
 
-    # MTG card dimensions (63x88mm)
-    card_width = 2.5 * 72    # 180 points
-    card_height = 3.5 * 72   # 252 points
+    # MTG card dimensions (63x88mm) + 2%
+    scale_factor = 1.02  # 2% larger
+    card_width = 2.5 * 72 * scale_factor    # 183.6 points
+    card_height = 3.5 * 72 * scale_factor   # 257.04 points
 
     # Fixed 3x3 grid
     cols = rows = 3
@@ -24,9 +26,9 @@ def generate_pdf(front_image_files, back_image_file, output_pdf):
     # Fixed margin for all sides (use left/right margin for top/bottom too)
     margin = (page_width - total_cards_width) / 2
     
-    # Recalculate vertical centering with the same margin
+    # Adjust vertical spacing with scaled cards
     vertical_space = page_height - (2 * margin) - total_cards_height
-    gap = vertical_space / (rows - 1)  # Distribute remaining space between cards
+    gap = max(1, vertical_space / (rows - 1))  # Ensure at least 1 point gap
 
     def draw_page(image_list, is_back=False):
         for index, img_file in enumerate(image_list):
