@@ -210,8 +210,8 @@ class MTGPDFGeneratorGUI(tk.Tk):
         preview_window.minsize(600, 400)
         preview_window.geometry("800x600")
 
-        # Create main container with fixed padding
-        container = tk.Frame(preview_window, padx=10, pady=10)
+        # Create main container with reduced padding
+        container = tk.Frame(preview_window, padx=5, pady=5)
         container.pack(fill=tk.BOTH, expand=True)
 
         # Make it scrollable
@@ -227,6 +227,39 @@ class MTGPDFGeneratorGUI(tk.Tk):
         # Pack scrollbar and canvas
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Add mousewheel scrolling
+        def _on_mousewheel(event):
+            # Handle platform-specific scroll behavior
+            if hasattr(event, 'num') and event.num == 4 or hasattr(event, 'delta') and event.delta > 0:  # Scroll up
+                canvas.yview_scroll(-1, "units")
+            elif hasattr(event, 'num') and event.num == 5 or hasattr(event, 'delta') and event.delta < 0:  # Scroll down
+                canvas.yview_scroll(1, "units")
+        
+        # Helper function to bind mousewheel to all child widgets recursively
+        def bind_mousewheel_to_children(widget):
+            if self.tk.call('tk', 'windowingsystem') == 'aqua':  # macOS
+                widget.bind("<MouseWheel>", _on_mousewheel)
+            else:  # Windows and Linux
+                widget.bind("<MouseWheel>", _on_mousewheel)  # Windows
+                widget.bind("<Button-4>", _on_mousewheel)    # Linux scroll up
+                widget.bind("<Button-5>", _on_mousewheel)    # Linux scroll down
+            
+            # Recursively bind to all children as they're created
+            widget.bind_class("Widget", "<Button-4>", _on_mousewheel)
+            widget.bind_class("Widget", "<Button-5>", _on_mousewheel)
+            widget.bind_class("Widget", "<MouseWheel>", _on_mousewheel)
+        
+        # Bind mousewheel events to container and canvas
+        bind_mousewheel_to_children(container)
+        bind_mousewheel_to_children(canvas)
+        bind_mousewheel_to_children(scroll_frame)
+        
+        # Bind to the preview window itself
+        bind_mousewheel_to_children(preview_window)
+        
+        # Make sure canvas has focus for mousewheel events
+        canvas.focus_set()
 
         # Store image references
         self._preview_images_cache = []
@@ -270,13 +303,20 @@ class MTGPDFGeneratorGUI(tk.Tk):
         loading_label.destroy()
         
         # Calculate fixed layout
-        def update_layout():
+        def update_layout(initial_width=None):
             # Clear existing widgets
             for widget in scroll_frame.winfo_children():
                 widget.destroy()
                 
-            # Get current width and calculate columns
-            width = canvas.winfo_width()
+            # Get current width or use initial width parameter
+            width = initial_width if initial_width else canvas.winfo_width()
+            # Subtract container padding (2 * 5 = 10) from available width
+            width -= 10
+            
+            # Default width if window hasn't been drawn yet
+            if width <= 1:
+                width = 700  # Default width (container width minus scrollbar)
+                
             card_width = 100
             label_width = 120
             spacing = 10
@@ -284,9 +324,7 @@ class MTGPDFGeneratorGUI(tk.Tk):
             
             # At least 1 column, at most what fits in the window
             cols = max(1, width // content_width)
-            if cols < 1:
-                cols = 1
-                
+            
             # Create grid layout
             for i, (card_name, front_img, back_img) in enumerate(card_images):
                 row = i // cols
@@ -296,18 +334,29 @@ class MTGPDFGeneratorGUI(tk.Tk):
                 card_frame = tk.Frame(scroll_frame)
                 card_frame.grid(row=row, column=col, padx=spacing, pady=spacing, sticky="nsew")
                 
-                # Add cards and name to the frame with equal spacing
-                tk.Label(card_frame, image=front_img).grid(row=0, column=0, padx=spacing)
-                tk.Label(card_frame, text=card_name, wraplength=label_width).grid(row=0, column=1, padx=spacing)
-                tk.Label(card_frame, image=back_img).grid(row=0, column=2, padx=spacing)
-        
-        # Wait for window to be fully realized before calculating layout
-        def on_window_configured(event=None):
-            # Only run this once when the window is first shown
-            canvas.unbind("<Configure>")
-            update_layout()
-            # Rebind with the normal resize handler
-            canvas.bind("<Configure>", delayed_resize)
+                # Make each column in card_frame expand equally
+                card_frame.grid_columnconfigure(0, weight=1, uniform="card_cols")
+                card_frame.grid_columnconfigure(1, weight=1, uniform="card_cols")
+                card_frame.grid_columnconfigure(2, weight=1, uniform="card_cols")
+                card_frame.grid_rowconfigure(0, weight=1)
+
+                # Place front, name, and back with sticky="nsew" to fill space
+                front_label = tk.Label(card_frame, image=front_img)
+                front_label.grid(row=0, column=0, sticky="nsew", padx=spacing, pady=spacing)
+
+                name_label = tk.Label(card_frame, text=card_name, wraplength=label_width)
+                name_label.grid(row=0, column=1, sticky="nsew", padx=spacing, pady=spacing)
+
+                back_label = tk.Label(card_frame, image=back_img)
+                back_label.grid(row=0, column=2, sticky="nsew", padx=spacing, pady=spacing)
+            
+            # Bind mousewheel to all newly created widgets
+            for widget in scroll_frame.winfo_children():
+                bind_mousewheel_to_children(widget)
+            
+            # Update the scrollregion to encompass all items
+            scroll_frame.update_idletasks()
+            canvas.configure(scrollregion=canvas.bbox("all"))
         
         # Use a single timer for resize events
         resize_timer = None
@@ -317,11 +366,22 @@ class MTGPDFGeneratorGUI(tk.Tk):
                 preview_window.after_cancel(resize_timer)
             resize_timer = preview_window.after(300, update_layout)
         
-        # Bind initial setup
-        canvas.bind("<Configure>", on_window_configured)
+        # Bind resize handler
+        canvas.bind("<Configure>", delayed_resize)
+        
+        # Initial layout - schedule this after window is shown
+        def show_initial_layout():
+            # Get container width for initial calculation
+            container_width = container.winfo_width()
+            update_layout(container_width)
+        
+        # Schedule the initial layout after window appears
+        # Use after_idle for the most immediate execution after window drawing
+        preview_window.after(100, show_initial_layout)
         
         # Clean up when window closes
         def on_closing():
+            nonlocal resize_timer
             if resize_timer:
                 preview_window.after_cancel(resize_timer)
             preview_window.destroy()
