@@ -1,6 +1,7 @@
 import requests
 from requests.exceptions import Timeout, RequestException
 from mtgjson_helper import MTGJSONDatabase
+from tqdm import tqdm
 
 class CardNotFoundError(Exception):
     pass
@@ -162,11 +163,33 @@ def download_image(url, file_path):
         response = requests.get(
             url, 
             headers={"User-Agent": "MTGCardPDFGenerator/1.0"},
-            timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+            timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+            stream=True
         )
         response.raise_for_status()
-        with open(file_path, "wb") as f:
-            f.write(response.content)
+        
+        # Get file size for progress bar
+        file_size = int(response.headers.get('content-length', 0))
+        
+        # Create progress bar
+        desc = os.path.basename(file_path)
+        with tqdm(
+            total=file_size,
+            unit='B',
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=desc,
+            leave=False
+        ) as pbar:
+            # Download with progress
+            with open(file_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        pbar.update(len(chunk))
+        
+        print(f"✓ Downloaded: {desc}")
+        
     except Exception as e:
         print(f"Error downloading image from {url}: {e}")
         raise

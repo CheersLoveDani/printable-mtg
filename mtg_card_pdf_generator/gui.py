@@ -8,6 +8,7 @@ import queue
 from functools import partial
 import re
 import time
+from tqdm import tqdm
 
 from deck_parser import parse_decklist
 from scryfall import get_card_image_url, download_image
@@ -425,38 +426,47 @@ class MTGPDFGeneratorGUI(tk.Tk):
                 self.queue_action("complete", False, "Decklist is empty.")
                 return
 
-            card_images = []  # List of (front_path, back_path) tuples
+            card_images = []
             total_cards = len(deck)
+            
+            print("\nDownloading card images:")
+            print("=" * 50)
+            
+            with tqdm(total=total_cards, desc="Overall Progress", unit="card") as pbar:
+                for index, card_tuple in enumerate(deck):
+                    card_name, variant_info = card_tuple
+                    self.queue_action("status", f"Processing '{card_name}' ({index+1}/{total_cards})...")
+                    self.queue_action("progress", (index / total_cards) * 50)
 
-            for index, card_tuple in enumerate(deck):
-                card_name, variant_info = card_tuple
-                self.queue_action("status", f"Downloading image for '{card_name}' ({index+1}/{total_cards})...")
-                self.queue_action("progress", (index / total_cards) * 50)
+                    safe_name = self.sanitize_filename(card_name)
+                    front_path = os.path.join(self.image_folder, f"{safe_name}_front.jpg")
+                    back_path = os.path.join(self.image_folder, f"{safe_name}_back.jpg")
 
-                safe_name = self.sanitize_filename(card_name)
-                front_path = os.path.join(self.image_folder, f"{safe_name}_front.jpg")
-                back_path = os.path.join(self.image_folder, f"{safe_name}_back.jpg")
-
-                try:
-                    if not os.path.exists(front_path):
-                        sides = get_card_image_url(card_name, variant_info, image_size="normal")
-                        download_image(sides.front_url, front_path)
-                        if sides.back_url:  # If it's a double-sided card
-                            download_image(sides.back_url, back_path)
-                            default_back = back_path
+                    try:
+                        if not os.path.exists(front_path):
+                            sides = get_card_image_url(card_name, variant_info, image_size="normal")
+                            download_image(sides.front_url, front_path)
+                            if sides.back_url:
+                                download_image(sides.back_url, back_path)
+                                default_back = back_path
+                            else:
+                                default_back = self.card_back_file.get()
                         else:
+                            print(f"✓ Using cached: {safe_name}")
                             default_back = self.card_back_file.get()
-                    else:
-                        default_back = self.card_back_file.get()
-                        if os.path.exists(back_path):  # Use existing back if available
-                            default_back = back_path
-                            
-                    card_images.append((front_path, default_back))
-                except Exception as e:
-                    error_msg = f"Error downloading image for {card_name}: {e}"
-                    print(error_msg)
-                    self.queue_action("error", error_msg)
-                    continue
+                            if os.path.exists(back_path):
+                                default_back = back_path
+                                
+                        card_images.append((front_path, default_back))
+                        pbar.update(1)
+                    except Exception as e:
+                        error_msg = f"Error processing {card_name}: {e}"
+                        print(f"✗ {error_msg}")
+                        self.queue_action("error", error_msg)
+                        continue
+
+            print("\nProcessing complete!")
+            print("=" * 50)
 
             if not card_images:
                 self.queue_action("status", "No images downloaded.")
