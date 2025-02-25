@@ -230,11 +230,20 @@ class MTGPDFGeneratorGUI(tk.Tk):
 
         # Add mousewheel scrolling
         def _on_mousewheel(event):
-            # Handle platform-specific scroll behavior
-            if hasattr(event, 'num') and event.num == 4 or hasattr(event, 'delta') and event.delta > 0:  # Scroll up
-                canvas.yview_scroll(-1, "units")
-            elif hasattr(event, 'num') and event.num == 5 or hasattr(event, 'delta') and event.delta < 0:  # Scroll down
-                canvas.yview_scroll(1, "units")
+            # Check if Ctrl is pressed (state & 0x0004 is typical on Windows)
+            if (event.state & 0x0004) != 0:
+                # Zoom in/out
+                if (hasattr(event, 'num') and event.num == 4) or (hasattr(event, 'delta') and event.delta > 0):
+                    self._preview_zoom_scale += 0.1
+                else:
+                    self._preview_zoom_scale = max(0.1, self._preview_zoom_scale - 0.1)
+                update_layout()
+            else:
+                # Normal scrolling
+                if (hasattr(event, 'num') and event.num == 4) or (hasattr(event, 'delta') and event.delta > 0):
+                    canvas.yview_scroll(-1, "units")
+                else:
+                    canvas.yview_scroll(1, "units")
         
         # Helper function to bind mousewheel to all child widgets recursively
         def bind_mousewheel_to_children(widget):
@@ -263,6 +272,12 @@ class MTGPDFGeneratorGUI(tk.Tk):
 
         # Store image references
         self._preview_images_cache = []
+        
+        # Zoom scale for adjusting card size
+        self._preview_zoom_scale = 1.0
+        
+        # Store original PIL images to allow repeated resizing
+        original_images = []
         
         # Load all card images first
         card_images = []
@@ -295,6 +310,8 @@ class MTGPDFGeneratorGUI(tk.Tk):
                 
                 card_images.append((card_name, tk_front, tk_back))
                 self._preview_images_cache.extend([tk_front, tk_back])
+                # Save original PIL images alongside card_name
+                original_images.append((card_name, img_front, img_back))
             except Exception as e:
                 print(f"Error loading image for {card_name}: {e}")
                 continue
@@ -304,52 +321,54 @@ class MTGPDFGeneratorGUI(tk.Tk):
         
         # Calculate fixed layout
         def update_layout(initial_width=None):
-            # Clear existing widgets
             for widget in scroll_frame.winfo_children():
                 widget.destroy()
-                
-            # Get current width or use initial width parameter
+
             width = initial_width if initial_width else canvas.winfo_width()
-            # Subtract container padding (2 * 5 = 10) from available width
-            width -= 10
-            
-            # Default width if window hasn't been drawn yet
+            width -= 10  # account for container padding
             if width <= 1:
-                width = 700  # Default width (container width minus scrollbar)
-                
-            card_width = 100
-            label_width = 120
+                width = 700
+
+            # Recompute card sizes based on zoom
+            base_card_width = 100
+            base_card_height = 140
+            scaled_card_width = int(base_card_width * self._preview_zoom_scale)
+            scaled_card_height = int(base_card_height * self._preview_zoom_scale)
+            scaled_label_width = int(120 * self._preview_zoom_scale)
             spacing = 10
-            content_width = card_width * 2 + label_width + spacing * 4  # Two cards + label + spacing
-            
-            # At least 1 column, at most what fits in the window
+            content_width = scaled_card_width * 2 + scaled_label_width + spacing * 4
+
             cols = max(1, width // content_width)
-            
-            # Create grid layout
+
+            # Refresh card_images with new sizes
+            card_images.clear()
+            for (card_name, pil_front, pil_back) in original_images:
+                try:
+                    # Resize for the current zoom
+                    resized_front = pil_front.resize((scaled_card_width, scaled_card_height), Image.Resampling.LANCZOS)
+                    tk_front = ImageTk.PhotoImage(resized_front)
+                    resized_back = pil_back.resize((scaled_card_width, scaled_card_height), Image.Resampling.LANCZOS)
+                    tk_back = ImageTk.PhotoImage(resized_back)
+                    card_images.append((card_name, tk_front, tk_back))
+                    self._preview_images_cache.extend([tk_front, tk_back])
+                except:
+                    continue
+
             for i, (card_name, front_img, back_img) in enumerate(card_images):
                 row = i // cols
                 col = i % cols
-                
-                # Create a frame for each card set
                 card_frame = tk.Frame(scroll_frame)
                 card_frame.grid(row=row, column=col, padx=spacing, pady=spacing, sticky="nsew")
-                
-                # Make each column in card_frame expand equally
+
                 card_frame.grid_columnconfigure(0, weight=1, uniform="card_cols")
                 card_frame.grid_columnconfigure(1, weight=1, uniform="card_cols")
                 card_frame.grid_columnconfigure(2, weight=1, uniform="card_cols")
                 card_frame.grid_rowconfigure(0, weight=1)
 
-                # Place front, name, and back with sticky="nsew" to fill space
-                front_label = tk.Label(card_frame, image=front_img)
-                front_label.grid(row=0, column=0, sticky="nsew", padx=spacing, pady=spacing)
+                tk.Label(card_frame, image=front_img).grid(row=0, column=0, sticky="nsew", padx=spacing, pady=spacing)
+                tk.Label(card_frame, text=card_name, wraplength=scaled_label_width).grid(row=0, column=1, sticky="nsew", padx=spacing, pady=spacing)
+                tk.Label(card_frame, image=back_img).grid(row=0, column=2, sticky="nsew", padx=spacing, pady=spacing)
 
-                name_label = tk.Label(card_frame, text=card_name, wraplength=label_width)
-                name_label.grid(row=0, column=1, sticky="nsew", padx=spacing, pady=spacing)
-
-                back_label = tk.Label(card_frame, image=back_img)
-                back_label.grid(row=0, column=2, sticky="nsew", padx=spacing, pady=spacing)
-            
             # Bind mousewheel to all newly created widgets
             for widget in scroll_frame.winfo_children():
                 bind_mousewheel_to_children(widget)
