@@ -1,27 +1,29 @@
 import re
 
 def parse_decklist(file_path):
-    """Parse decklist, preserving variant information."""
+    """Parse decklist, preserving variant information and handling multipliers."""
     deck = []
     with open(file_path, "r") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            parts = line.split(maxsplit=1)
-            if len(parts) < 2:
+                
+            # Match different quantity formats: "4 Card", "4x Card", "4X Card"
+            quantity_match = re.match(r'^(\d+)\s*x?\s+(.+)$', line, re.IGNORECASE)
+            if not quantity_match:
                 continue
-            try:
-                count = int(parts[0])
-            except ValueError:
-                count = 1
+                
+            count = int(quantity_match.group(1))
+            raw_name = quantity_match.group(2).strip()
             
-            raw_name = parts[1].strip()
             # Extract base name and variant info
             base_name = clean_card_name(raw_name)
             variant_info = extract_variant_info(raw_name)
             
+            # Add the specified number of copies
             deck.extend([(base_name, variant_info)] * count)
+    
     return deck
 
 def clean_card_name(card_name):

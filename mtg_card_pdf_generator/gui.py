@@ -7,6 +7,7 @@ import threading
 import queue
 from functools import partial
 import re
+import time
 
 from deck_parser import parse_decklist
 from scryfall import get_card_image_url, download_image
@@ -206,63 +207,126 @@ class MTGPDFGeneratorGUI(tk.Tk):
 
         preview_window = tk.Toplevel(self)
         preview_window.title("Deck Image Preview")
+        preview_window.minsize(600, 400)
+        preview_window.geometry("800x600")
+
+        # Create main container with fixed padding
+        container = tk.Frame(preview_window, padx=10, pady=10)
+        container.pack(fill=tk.BOTH, expand=True)
 
         # Make it scrollable
-        canvas = tk.Canvas(preview_window)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar = ttk.Scrollbar(preview_window, orient="vertical", command=canvas.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas = tk.Canvas(container)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
         scroll_frame = tk.Frame(canvas)
-        canvas.create_window((0,0), window=scroll_frame, anchor="nw")
-        scroll_frame.bind("<Configure>", lambda e: canvas.config(scrollregion=canvas.bbox("all")))
-        canvas.config(yscrollcommand=scrollbar.set)
 
-        # We store references to PhotoImages to avoid garbage collection
+        # Configure scrolling
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack scrollbar and canvas
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Store image references
         self._preview_images_cache = []
-
-        for i, card_tuple in enumerate(deck):
+        
+        # Load all card images first
+        card_images = []
+        loading_label = tk.Label(scroll_frame, text="Loading images, please wait...", font=("Helvetica", 14))
+        loading_label.pack(pady=20)
+        preview_window.update()
+        
+        for card_tuple in deck:
             card_name, variant_info = card_tuple
-            safe_name = card_name.split(" // ")[0].replace(" ", "_").replace("/", "_").replace("\\", "_")
+            safe_name = self.sanitize_filename(card_name)
+            
             front_path = os.path.join(self.image_folder, f"{safe_name}_front.jpg")
-
+            back_path = os.path.join(self.image_folder, f"{safe_name}_back.jpg")
+            
             if not os.path.exists(front_path):
-                try:
-                    sides = get_card_image_url(card_name, variant_info, image_size="normal")
-                    download_image(sides.front_url, front_path)
-                except Exception as e:
-                    print(f"Error downloading {card_name}: {e}")
-                    continue
-
+                continue
+                
+            if not os.path.exists(back_path):
+                back_path = self.card_back_file.get()
+            
             try:
+                # Preload and process images
                 img_front = Image.open(front_path)
                 img_front = img_front.resize((100, 140), Image.Resampling.LANCZOS)
                 tk_front = ImageTk.PhotoImage(img_front)
-
-                # Check for double-sided card
-                back_path = os.path.join(self.image_folder, f"{safe_name}_back.jpg")
-                if os.path.exists(back_path):
-                    img_back = Image.open(back_path)
-                elif os.path.exists(self.card_back_file.get()):
-                    img_back = Image.open(self.card_back_file.get())
-                else:
-                    # Skip if no back image available
-                    continue
-
+                
+                img_back = Image.open(back_path)
                 img_back = img_back.resize((100, 140), Image.Resampling.LANCZOS)
                 tk_back = ImageTk.PhotoImage(img_back)
-
-                # Create row for each card
-                front_label = tk.Label(scroll_frame, image=tk_front)
-                front_label.grid(row=i, column=0, padx=5, pady=5)
-                card_label = tk.Label(scroll_frame, text=card_name, wraplength=120)
-                card_label.grid(row=i, column=1, padx=5, pady=5)
-                back_label = tk.Label(scroll_frame, image=tk_back)
-                back_label.grid(row=i, column=2, padx=5, pady=5)
-
+                
+                card_images.append((card_name, tk_front, tk_back))
                 self._preview_images_cache.extend([tk_front, tk_back])
             except Exception as e:
-                print(f"Error loading images for {card_name}: {e}")
+                print(f"Error loading image for {card_name}: {e}")
                 continue
+        
+        # Remove loading label
+        loading_label.destroy()
+        
+        # Calculate fixed layout
+        def update_layout():
+            # Clear existing widgets
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
+                
+            # Get current width and calculate columns
+            width = canvas.winfo_width()
+            card_width = 100
+            label_width = 120
+            spacing = 10
+            content_width = card_width * 2 + label_width + spacing * 4  # Two cards + label + spacing
+            
+            # At least 1 column, at most what fits in the window
+            cols = max(1, width // content_width)
+            if cols < 1:
+                cols = 1
+                
+            # Create grid layout
+            for i, (card_name, front_img, back_img) in enumerate(card_images):
+                row = i // cols
+                col = i % cols
+                
+                # Create a frame for each card set
+                card_frame = tk.Frame(scroll_frame)
+                card_frame.grid(row=row, column=col, padx=spacing, pady=spacing, sticky="nsew")
+                
+                # Add cards and name to the frame with equal spacing
+                tk.Label(card_frame, image=front_img).grid(row=0, column=0, padx=spacing)
+                tk.Label(card_frame, text=card_name, wraplength=label_width).grid(row=0, column=1, padx=spacing)
+                tk.Label(card_frame, image=back_img).grid(row=0, column=2, padx=spacing)
+        
+        # Wait for window to be fully realized before calculating layout
+        def on_window_configured(event=None):
+            # Only run this once when the window is first shown
+            canvas.unbind("<Configure>")
+            update_layout()
+            # Rebind with the normal resize handler
+            canvas.bind("<Configure>", delayed_resize)
+        
+        # Use a single timer for resize events
+        resize_timer = None
+        def delayed_resize(event=None):
+            nonlocal resize_timer
+            if resize_timer:
+                preview_window.after_cancel(resize_timer)
+            resize_timer = preview_window.after(300, update_layout)
+        
+        # Bind initial setup
+        canvas.bind("<Configure>", on_window_configured)
+        
+        # Clean up when window closes
+        def on_closing():
+            if resize_timer:
+                preview_window.after_cancel(resize_timer)
+            preview_window.destroy()
+        
+        preview_window.protocol("WM_DELETE_WINDOW", on_closing)
 
     def sanitize_filename(self, name):
         """Sanitize card name for file system use."""
