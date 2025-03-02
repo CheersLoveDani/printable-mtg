@@ -40,14 +40,17 @@ def generate_pdf(front_image_files, back_image_files, output_pdf):
             if is_back:
                 # Reverse the order of images in each row for back side
                 row_images = row_images[::-1]
+                # Fill in blanks to maintain alignment
+                row_images = [None] * (cols - len(row_images)) + row_images
 
             for col, img_file in enumerate(row_images):
                 # Calculate position (identical margins on all sides)
                 x = margin + col * card_width
                 y = margin + (rows - 1 - row) * (card_height + gap)
 
-                c.drawImage(img_file, x, y, width=card_width, height=card_height,
-                          preserveAspectRatio=True)
+                if img_file:
+                    c.drawImage(img_file, x, y, width=card_width, height=card_height,
+                              preserveAspectRatio=True)
 
         # Draw crop marks with identical margins
         c.setLineWidth(0.5)
