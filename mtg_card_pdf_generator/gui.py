@@ -24,11 +24,33 @@ class MTGPDFGeneratorGUI(tk.Tk):
         # Make window resizable
         self.resizable(True, True)
 
+        # Set background color for dark mode
+        self.configure(bg="#2e2e2e")
+
+        # Apply dark mode styles
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("TLabel", background="#2e2e2e", foreground="#ffffff")
+        style.configure("TButton", background="#444444", foreground="#ffffff", borderwidth=0, relief="flat")
+        style.configure("TEntry", fieldbackground="#444444", foreground="#ffffff", borderwidth=0, relief="flat")
+        style.configure("TFrame", background="#2e2e2e")
+        style.configure("TProgressbar", troughcolor="#444444", background="#00ff00", borderwidth=0, relief="flat")
+        style.map("TButton", 
+                  background=[("active", "#555555")],
+                  relief=[("pressed", "flat"), ("!pressed", "flat")])
+
+        # Modernize input fields
+        style.configure("Rounded.TEntry", fieldbackground="#444444", foreground="#ffffff", borderwidth=0, relief="flat", padding=5)
+        style.layout("Rounded.TEntry", [
+            ("Entry.field", {"children": [("Entry.padding", {"children": [("Entry.textarea", {"sticky": "nswe"})], "sticky": "nswe"})], "sticky": "nswe"})])
+        style.configure("Rounded.TEntry", bordercolor="#444444", lightcolor="#444444", darkcolor="#444444", borderwidth=0, relief="flat")
+
         # Variables for file paths and status
         self.decklist_file = tk.StringVar()
         self.output_pdf = tk.StringVar(value="mtg_cards_print.pdf")
         self.card_back_file = tk.StringVar(value="assets/card_back.jpg")
         self.status_text = tk.StringVar(value="Idle")
+        self.success_message = tk.StringVar(value="")
         self.error_log = []
         self.save_button = None
         self.queue = queue.Queue()
@@ -43,49 +65,56 @@ class MTGPDFGeneratorGUI(tk.Tk):
         self._start_queue_checker()
 
     def create_widgets(self):
-        # Create a "main_frame" that expands and centers
-        main_frame = tk.Frame(self)
-        main_frame.pack(expand=True, fill="both")
+        # Create a "main_frame" that expands and centers with padding
+        main_frame = ttk.Frame(self, padding=20)  # Add 20 pixels padding around all sides
+        main_frame.pack(expand=True, fill="both", padx=20, pady=20)  # Add additional window padding
 
         # Decklist file selection
-        tk.Label(main_frame, text="Decklist File:").pack(pady=10)
-        frame = tk.Frame(main_frame)
+        ttk.Label(main_frame, text="Decklist File:").pack(pady=10)
+        frame = ttk.Frame(main_frame)
         frame.pack(pady=5)
-        tk.Entry(frame, textvariable=self.decklist_file, width=50).pack(side=tk.LEFT, padx=5)
-        tk.Button(frame, text="Browse", command=self.browse_file).pack(side=tk.LEFT)
-
-        # Output PDF file selection
-        tk.Label(main_frame, text="Output PDF File:").pack(pady=10)
-        frame2 = tk.Frame(main_frame)
-        frame2.pack(pady=5)
-        tk.Entry(frame2, textvariable=self.output_pdf, width=50).pack(side=tk.LEFT, padx=5)
-        tk.Button(frame2, text="Browse", command=self.browse_output).pack(side=tk.LEFT)
+        ttk.Entry(frame, textvariable=self.decklist_file, width=50, style="Rounded.TEntry").pack(side=tk.LEFT, padx=5)
+        ttk.Button(frame, text="Browse", command=self.browse_file).pack(side=tk.LEFT)
 
         # Custom card back file selection
-        tk.Label(main_frame, text="Custom Card Back:").pack(pady=10)
-        frame_back = tk.Frame(main_frame)
+        ttk.Label(main_frame, text="Custom Card Back:").pack(pady=10)
+        frame_back = ttk.Frame(main_frame)
         frame_back.pack(pady=5)
-        tk.Entry(frame_back, textvariable=self.card_back_file, width=50).pack(side=tk.LEFT, padx=5)
-        tk.Button(frame_back, text="Browse", command=self.browse_back).pack(side=tk.LEFT)
+        ttk.Entry(frame_back, textvariable=self.card_back_file, width=50, style="Rounded.TEntry").pack(side=tk.LEFT, padx=5)
+        ttk.Button(frame_back, text="Browse", command=self.browse_back).pack(side=tk.LEFT)
 
         # Status and progress bar
-        tk.Label(main_frame, textvariable=self.status_text).pack(pady=10)
+        ttk.Label(main_frame, textvariable=self.status_text).pack(pady=10)
         self.progress_bar = ttk.Progressbar(main_frame, orient="horizontal", length=400, mode="determinate")
         self.progress_bar.pack(pady=10)
 
-        # Error log text area
-        tk.Label(main_frame, text="Error Log:").pack(pady=(10, 0))
-        self.error_text = tk.Text(main_frame, height=6, width=70, state="disabled")
-        self.error_text.pack(pady=(0,10))
+        # Console log text area (formerly error log)
+        ttk.Label(main_frame, text="Console Output:").pack(pady=(10, 0))
+        self.console_text = tk.Text(main_frame, height=8, width=70, state="disabled", 
+                                  bg="#2b2b2b", fg="#e6e6e6", bd=0, relief="flat",
+                                  font=("Consolas", 9))
+        self.console_text.pack(pady=(0,10))
+
+        # Success message label with yellow color
+        self.success_label = ttk.Label(main_frame, textvariable=self.success_message, foreground="#ffff00")
+        self.success_label.pack(pady=10)
 
         # Generate PDF button
-        tk.Button(main_frame, text="Generate PDF", command=self.start_generation, width=20).pack(pady=10)
+        ttk.Button(main_frame, text="Generate PDF", command=self.start_generation, width=20).pack(pady=10)
         # Add a separate "Save PDF" button (initially disabled)
-        self.save_button = tk.Button(main_frame, text="Save PDF", command=self.save_pdf, state="disabled", width=20)
+        self.save_button = ttk.Button(main_frame, text="Save PDF", command=self.save_pdf, state="disabled", width=20)
         self.save_button.pack(pady=5)
 
+        # Code for potential later use
+        # Output PDF file selection
+        # ttk.Label(main_frame, text="Output PDF File:").pack(pady=10)
+        # frame2 = ttk.Frame(main_frame)
+        # frame2.pack(pady=5)
+        # ttk.Entry(frame2, textvariable=self.output_pdf, width=50, style="Rounded.TEntry").pack(side=tk.LEFT, padx=5)
+        # ttk.Button(frame2, text="Browse", command=self.browse_output).pack(side=tk.LEFT)
+
         # Add a new button for previewing card images
-        tk.Button(main_frame, text="Preview Images", command=self.preview_deck_images, width=20).pack(pady=5)
+        # ttk.Button(main_frame, text="Preview Images", command=self.preview_deck_images, width=20).pack(pady=5)
 
     def _start_queue_checker(self):
         """Start checking for GUI updates from worker thread."""
@@ -98,10 +127,11 @@ class MTGPDFGeneratorGUI(tk.Tk):
                 action, args = self.queue.get_nowait()
                 if action == "status":
                     self.status_text.set(args)
+                    self.log_message(args)
                 elif action == "progress":
                     self.progress_bar["value"] = args
-                elif action == "error":
-                    self.log_error(str(args))  # Convert args to string
+                elif action == "log":
+                    self.log_message(*args)
                 elif action == "complete":
                     self._handle_completion(*args)
                 self.update_idletasks()
@@ -143,13 +173,13 @@ class MTGPDFGeneratorGUI(tk.Tk):
         # Disable buttons while processing
         self.save_button.config(state="disabled")
         for widget in self.winfo_children():
-            if isinstance(widget, tk.Button):
+            if isinstance(widget, ttk.Button):
                 widget.config(state="disabled")
 
         self.status_text.set("Processing decklist...")
         self.progress_bar["value"] = 0
-        self.error_log = []
-        self.clear_error_text()
+        self.clear_console()
+        self.success_message.set("")
 
         # Start worker thread
         self.current_thread = threading.Thread(target=self.generate_pdf_workflow)
@@ -160,28 +190,31 @@ class MTGPDFGeneratorGUI(tk.Tk):
         """Handle completion of the generation process."""
         # Re-enable buttons
         for widget in self.winfo_children():
-            if isinstance(widget, tk.Button):
+            if isinstance(widget, ttk.Button):
                 widget.config(state="normal")
         
         if success:
             self.save_button.config(state="normal")
-            messagebox.showinfo("Success", message)
+            self.success_message.set(message)
         else:
             self.save_button.config(state="disabled")
-            messagebox.showerror("Error", message)
+            self.success_message.set(message)
 
-    def log_error(self, message):
-        """Log an error message to the error text widget."""
-        message = str(message)  # Ensure message is a string
-        self.error_log.append(message)
-        self.error_text.config(state="normal")
-        self.error_text.insert(tk.END, message + "\n")
-        self.error_text.config(state="disabled")
+    def log_message(self, message, level="INFO"):
+        """Log a message to the console text widget."""
+        message = str(message)
+        timestamp = time.strftime("%H:%M:%S")
+        formatted_message = f"[{timestamp}] {level}: {message}\n"
+        
+        self.console_text.config(state="normal")
+        self.console_text.insert(tk.END, formatted_message)
+        self.console_text.see(tk.END)  # Auto-scroll to bottom
+        self.console_text.config(state="disabled")
 
-    def clear_error_text(self):
-        self.error_text.config(state="normal")
-        self.error_text.delete("1.0", tk.END)
-        self.error_text.config(state="disabled")
+    def clear_console(self):
+        self.console_text.config(state="normal")
+        self.console_text.delete("1.0", tk.END)
+        self.console_text.config(state="disabled")
 
     def save_pdf(self):
         """Copy the generated PDF to a new location."""
@@ -191,9 +224,11 @@ class MTGPDFGeneratorGUI(tk.Tk):
         if filename:
             try:
                 shutil.copy(self.output_pdf.get(), filename)
-                messagebox.showinfo("Saved", f"PDF saved as {filename}")
+                self.success_label.configure(foreground="#00ff00")  # Change to green
+                self.success_message.set(f"PDF saved as {filename}")
             except Exception as e:
-                messagebox.showerror("Error", f"Could not save PDF: {e}")
+                self.success_label.configure(foreground="#ffff00")  # Keep yellow for errors
+                self.success_message.set(f"Could not save PDF: {e}")
 
     def preview_deck_images(self):
         """Open a new window that shows each card's front and back in a grid."""
@@ -212,13 +247,13 @@ class MTGPDFGeneratorGUI(tk.Tk):
         preview_window.geometry("800x600")
 
         # Create main container with reduced padding
-        container = tk.Frame(preview_window, padx=5, pady=5)
+        container = ttk.Frame(preview_window, padding=(5, 5))
         container.pack(fill=tk.BOTH, expand=True)
 
         # Make it scrollable
         canvas = tk.Canvas(container)
         scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        scroll_frame = tk.Frame(canvas)
+        scroll_frame = ttk.Frame(canvas)
 
         # Configure scrolling
         scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
@@ -282,7 +317,7 @@ class MTGPDFGeneratorGUI(tk.Tk):
         
         # Load all card images first
         card_images = []
-        loading_label = tk.Label(scroll_frame, text="Loading images, please wait...", font=("Helvetica", 14))
+        loading_label = ttk.Label(scroll_frame, text="Loading images, please wait...", font=("Helvetica", 14))
         loading_label.pack(pady=20)
         preview_window.update()
         
@@ -358,7 +393,7 @@ class MTGPDFGeneratorGUI(tk.Tk):
             for i, (card_name, front_img, back_img) in enumerate(card_images):
                 row = i // cols
                 col = i % cols
-                card_frame = tk.Frame(scroll_frame)
+                card_frame = ttk.Frame(scroll_frame)
                 card_frame.grid(row=row, column=col, padx=spacing, pady=spacing, sticky="nsew")
 
                 card_frame.grid_columnconfigure(0, weight=1, uniform="card_cols")
@@ -366,9 +401,9 @@ class MTGPDFGeneratorGUI(tk.Tk):
                 card_frame.grid_columnconfigure(2, weight=1, uniform="card_cols")
                 card_frame.grid_rowconfigure(0, weight=1)
 
-                tk.Label(card_frame, image=front_img).grid(row=0, column=0, sticky="nsew", padx=spacing, pady=spacing)
-                tk.Label(card_frame, text=card_name, wraplength=scaled_label_width).grid(row=0, column=1, sticky="nsew", padx=spacing, pady=spacing)
-                tk.Label(card_frame, image=back_img).grid(row=0, column=2, sticky="nsew", padx=spacing, pady=spacing)
+                ttk.Label(card_frame, image=front_img).grid(row=0, column=0, sticky="nsew", padx=spacing, pady=spacing)
+                ttk.Label(card_frame, text=card_name, wraplength=scaled_label_width).grid(row=0, column=1, sticky="nsew", padx=spacing, pady=spacing)
+                ttk.Label(card_frame, image=back_img).grid(row=0, column=2, sticky="nsew", padx=spacing, pady=spacing)
 
             # Bind mousewheel to all newly created widgets
             for widget in scroll_frame.winfo_children():
@@ -429,8 +464,7 @@ class MTGPDFGeneratorGUI(tk.Tk):
             card_images = []
             total_cards = len(deck)
             
-            print("\nDownloading card images:")
-            print("=" * 50)
+            self.queue_action("log", ("Starting card image downloads...", "INFO"))
             
             with tqdm(total=total_cards, desc="Overall Progress", unit="card") as pbar:
                 for index, card_tuple in enumerate(deck):
@@ -452,7 +486,7 @@ class MTGPDFGeneratorGUI(tk.Tk):
                             else:
                                 default_back = self.card_back_file.get()
                         else:
-                            print(f"✓ Using cached: {safe_name}")
+                            self.queue_action("log", (f"Using cached: {safe_name}", "INFO"))
                             default_back = self.card_back_file.get()
                             if os.path.exists(back_path):
                                 default_back = back_path
@@ -461,16 +495,14 @@ class MTGPDFGeneratorGUI(tk.Tk):
                         pbar.update(1)
                     except Exception as e:
                         error_msg = f"Error processing {card_name}: {e}"
-                        print(f"✗ {error_msg}")
-                        self.queue_action("error", error_msg)
+                        self.queue_action("log", (error_msg, "ERROR"))
                         continue
 
-            print("\nProcessing complete!")
-            print("=" * 50)
+            self.queue_action("log", ("Image processing complete!", "INFO"))
 
             if not card_images:
                 self.queue_action("status", "No images downloaded.")
-                self.queue_action("complete", False, "No images were successfully downloaded. Check the error log.")
+                self.queue_action("complete", False, "No images were successfully downloaded. Check the console log.")
                 return
 
             # Generate PDF with card-specific backs
@@ -484,15 +516,13 @@ class MTGPDFGeneratorGUI(tk.Tk):
 
             self.queue_action("status", "PDF generation complete!")
             self.queue_action("progress", 100)
+            self.queue_action("log", ("PDF generation successful!", "INFO"))
 
-            msg = f"PDF generated: {output_pdf_file}"
-            if self.error_log:
-                msg += "\nSome cards failed to download:\n" + "\n".join(self.error_log)
-            
-            self.queue_action("complete", True, msg)
+            self.queue_action("complete", True, "PDF Generated: Remember to Save!")
 
         except Exception as e:
             self.queue_action("status", "An error occurred.")
+            self.queue_action("log", (str(e), "ERROR"))
             self.queue_action("complete", False, str(e))
 
 if __name__ == "__main__":
