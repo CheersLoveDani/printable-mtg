@@ -2,6 +2,7 @@ import requests
 from requests.exceptions import Timeout, RequestException
 from mtgjson_helper import MTGJSONDatabase
 from tqdm import tqdm
+import os  # Added import
 
 class CardNotFoundError(Exception):
     pass
@@ -77,7 +78,7 @@ def progressively_search_card(card_name, image_size="normal"):
     
     # Second try: remove everything in parentheses and after
     base_name = card_name.split('(')[0].strip()
-    if base_name != card_name:
+    if (base_name != card_name):
         variants.append(base_name)
     
     # Third try: split on commas and take first part
